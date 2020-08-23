@@ -8,6 +8,14 @@
 
 #include <libnetfilter_queue/libnetfilter_queue.h>
 
+#include <netinet/in.h>
+
+void usage() {
+	printf("syntax : netfilter-test <host>\n");
+	printf("sample : netfilter-test test.gilgil.net\n");
+}
+
+
 /* returns packet id */
 static u_int32_t print_pkt (struct nfq_data *tb)
 {
@@ -74,6 +82,11 @@ static int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
 
 int main(int argc, char **argv)
 {
+	if (2 != argc) {
+		usage();
+		return -1;
+	}
+
 	struct nfq_handle *h;
 	struct nfq_q_handle *qh;
 	struct nfnl_handle *nh;
