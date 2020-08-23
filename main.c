@@ -10,6 +10,8 @@
 
 #include <netinet/in.h>
 
+int flag = 0;
+
 void usage() {
 	printf("syntax : netfilter-test <host>\n");
 	printf("sample : netfilter-test test.gilgil.net\n");
@@ -77,7 +79,13 @@ static int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
 {
 	u_int32_t id = print_pkt(nfa);
 	printf("entering callback\n");
-	return nfq_set_verdict(qh, id, NF_ACCEPT, 0, NULL);
+	if (flag) {
+		printf("=========>Drop!\n\n\n");
+		return nfq_set_verdict(qh, id, NF_DROP, 0, NULL);
+	} else {
+		printf("=========>Accept!\n\n\n");
+		return nfq_set_verdict(qh, id, NF_ACCEPT, 0, NULL);
+	}
 }
 
 int main(int argc, char **argv)
