@@ -9,12 +9,13 @@
 #include <libnetfilter_queue/libnetfilter_queue.h>
 
 #include <netinet/in.h>
+#include <time.h>
 
 int flag = 0;
 
 void usage() {
-	printf("syntax : netfilter-test <host>\n");
-	printf("sample : netfilter-test test.gilgil.net\n");
+	printf("syntax : netfilter-test <host> <durationTime>\n");
+	printf("sample : netfilter-test test.gilgil.net 333\n");
 }
 
 
@@ -80,17 +81,17 @@ static int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
 	u_int32_t id = print_pkt(nfa);
 	printf("entering callback\n");
 	if (flag) {
-		printf("=========>Drop!\n\n\n");
+		printf("=========>DROP\n\n\n");
 		return nfq_set_verdict(qh, id, NF_DROP, 0, NULL);
 	} else {
-		printf("=========>Accept!\n\n\n");
+		printf("=========>ACCEPT\n\n\n");
 		return nfq_set_verdict(qh, id, NF_ACCEPT, 0, NULL);
 	}
 }
 
 int main(int argc, char **argv)
 {
-	if (2 != argc) {
+	if (3 != argc) {
 		usage();
 		return -1;
 	}
@@ -100,6 +101,7 @@ int main(int argc, char **argv)
 	struct nfnl_handle *nh;
 	int fd;
 	int rv;
+	time_t durationTime = atoi(argv[2]);
 	char buf[4096] __attribute__ ((aligned));
 
 	printf("opening library handle\n");
@@ -136,20 +138,17 @@ int main(int argc, char **argv)
 
 	fd = nfq_fd(h);
 
+	time_t startTime = time(NULL);
+
 	for (;;) {
-		if ((rv = recv(fd, buf, sizeof(buf), 0)) >= 0) {
+		if (time(NULL) > startTime + durationTime) {
+			printf("\n\n\n=== END TASK ===\n\n\n");
+			break;
+		} else if ((rv = recv(fd, buf, sizeof(buf), 0)) >= 0) {
 			printf("pkt received\n");
 			nfq_handle_packet(h, buf, rv);
 			continue;
-		}
-		/* if your application is too slow to digest the packets that
-		 * are sent from kernel-space, the socket buffer that we use
-		 * to enqueue packets may fill up returning ENOBUFS. Depending
-		 * on your application, this error may be ignored. nfq_nlmsg_verdict_putPlease, see
-		 * the doxygen documentation of this library on how to improve
-		 * this situation.
-		 */
-		if (rv < 0 && errno == ENOBUFS) {
+		} else if (rv < 0 && errno == ENOBUFS) {
 			printf("losing packets!\n");
 			continue;
 		}
