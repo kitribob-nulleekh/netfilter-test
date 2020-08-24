@@ -9,13 +9,78 @@
 #include <libnetfilter_queue/libnetfilter_queue.h>
 
 #include <netinet/in.h>
+#include <netinet/ip.h>
+#include <netinet/tcp.h>
 #include <time.h>
+#include <string.h>
 
-int flag = 0;
+typedef _Bool bool;
+#define false	(_Bool)0;
+#define true	(_Bool)1;
+
+bool flag = false;
+
+char* blockedHost;
 
 void usage() {
 	printf("syntax : netfilter-test <host> <durationTime>\n");
 	printf("sample : netfilter-test test.gilgil.net 333\n");
+}
+
+bool checkHost(unsigned char* _data) {
+	struct ip* ipHeader;
+	struct tcphdr* tcpHeader;
+
+	uint32_t ipLen, tcpOffset, httpSize, payloadLen;
+
+	char* payload;
+
+	ipHeader = (struct ip*)(_data);
+	ipLen = (ipHeader->ip_hl)*4;
+	if (ipHeader->ip_p != IPPROTO_TCP)
+		printf("===>Not TCP");
+	else {
+		if (20 > ipLen) 
+			printf("===>Invalid IP Header");
+		else {
+			tcpHeader = (struct tcphdr*)(_data + ipLen);
+			tcpOffset = (tcpHeader->th_off)*4;
+			if (20 > tcpOffset)
+				printf("===>Invalid TCP Header");
+			else {
+				payloadLen = ntohs(ipHeader->ip_len)-ipLen-tcpOffset;
+				if (0 >= payloadLen)
+					printf("===>No Payload");
+				else {
+					payload = (char*)(_data + ipLen + tcpOffset);
+					
+					payload[payloadLen-1] = 0;
+					
+					const char* pathStart = strstr(payload, "Host: ");
+					if (NULL == pathStart)
+						printf("===>No Host");
+					else {
+						pathStart += 6;
+						const char* queryStart = strstr(pathStart, "User-Agent: ") - 1;
+						if (NULL == queryStart)
+							printf("===>No User-Agent");
+						else {
+							char path[queryStart - pathStart];
+			
+							printf("===>%s", path);
+
+							strncpy(path, pathStart, queryStart-pathStart);
+							path[queryStart - pathStart - 1] = 0;
+				
+							if (0 == strcmp(path, blockedHost))
+								return true;
+						}
+					}
+				}
+			}
+		}
+	}
+	return false;
 }
 
 
@@ -32,7 +97,7 @@ static u_int32_t print_pkt (struct nfq_data *tb)
 	ph = nfq_get_msg_packet_hdr(tb);
 	if (ph) {
 		id = ntohl(ph->packet_id);
-		printf("hw_protocol=0x%04x hook=%u id=%u ",
+		printf("hw_protocol=0x%04x hook=%u id=%u\n",
 			ntohs(ph->hw_protocol), ph->hook, id);
 	}
 
@@ -43,31 +108,33 @@ static u_int32_t print_pkt (struct nfq_data *tb)
 		printf("hw_src_addr=");
 		for (i = 0; i < hlen-1; i++)
 			printf("%02x:", hwph->hw_addr[i]);
-		printf("%02x ", hwph->hw_addr[hlen-1]);
+		printf("%02x\n", hwph->hw_addr[hlen-1]);
 	}
 
 	mark = nfq_get_nfmark(tb);
 	if (mark)
-		printf("mark=%u ", mark);
+		printf("mark=%u\n", mark);
 
 	ifi = nfq_get_indev(tb);
 	if (ifi)
-		printf("indev=%u ", ifi);
+		printf("indev=%u\n", ifi);
 
 	ifi = nfq_get_outdev(tb);
 	if (ifi)
-		printf("outdev=%u ", ifi);
+		printf("outdev=%u\n", ifi);
 	ifi = nfq_get_physindev(tb);
 	if (ifi)
-		printf("physindev=%u ", ifi);
+		printf("physindev=%u\n", ifi);
 
 	ifi = nfq_get_physoutdev(tb);
 	if (ifi)
-		printf("physoutdev=%u ", ifi);
+		printf("physoutdev=%u\n", ifi);
 
 	ret = nfq_get_payload(tb, &data);
-	if (ret >= 0)
-		printf("payload_len=%d ", ret);
+	if (ret >= 0) {
+		printf("payload_len=%d\n", ret);
+		flag = checkHost(data);
+	}
 
 	fputc('\n', stdout);
 
@@ -95,6 +162,8 @@ int main(int argc, char **argv)
 		usage();
 		return -1;
 	}
+
+	blockedHost = (char*)(argv[1]);
 
 	struct nfq_handle *h;
 	struct nfq_q_handle *qh;
